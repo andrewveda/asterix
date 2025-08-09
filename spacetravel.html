@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Space Race — Twain's Jumping Frog (Learn English)</title>
+  <style>
+    :root{--bg:#02031a;--panel:#0b1226;--accent:#7ad3ff}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,system-ui,Arial}
+    body{background:radial-gradient(ellipse at 20% 10%, #07102a 0%, transparent 25%), linear-gradient(180deg,#02031a 0,#031028 100%);color:#e6eef8}
+    .wrap{max-width:1100px;margin:14px auto;padding:12px}
+    header{display:flex;align-items:center;gap:12px}
+    h1{margin:0;font-size:18px}
+    .hud{margin-left:auto;display:flex;gap:10px;align-items:center}
+    .btn{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;color:inherit;cursor:pointer}
+    .game{display:grid;grid-template-columns:1fr 360px;gap:14px;margin-top:14px}
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)}
+    #gameCanvas{background:#000 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="100%" height="100%" fill="black"/></svg>') repeat;display:block;border-radius:10px}
+    .right{height:640px;overflow:auto}
+    .stat{font-weight:700}
+    .snippet-slot{min-height:36px;border-radius:8px;padding:6px;margin:6px 0;background:rgba(255,255,255,0.02);font-size:13px}
+    .collected{outline:3px solid rgba(122,211,255,0.08)}
+    .center{display:flex;align-items:center;justify-content:center}
+    .big{font-size:20px}
+    @media(max-width:980px){.game{grid-template-columns:1fr;}.right{height:auto}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div style="width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#07102a,#072b47);display:flex;align-items:center;justify-content:center">🚀</div>
+      <h1>Space Race — Collect the Story: <span style="color:var(--accent)">The Celebrated Jumping Frog</span></h1>
+      <div class="hud">
+        <div class="panel small">Lives: <span id="lives" class="stat">3</span></div>
+        <div class="panel small">Time: <span id="timer" class="stat">02:00</span></div>
+        <div class="panel small">Collected: <span id="collected" class="stat">0</span>/10</div>
+        <button class="btn" id="restart">Restart</button>
+      </div>
+    </header>
+
+    <div class="game">
+      <div class="panel">
+        <canvas id="gameCanvas" width="720" height="640" tabindex="0"></canvas>
+        <div style="display:flex;gap:8px;margin-top:8px;justify-content:space-between">
+          <div class="small">Use Arrow keys / WASD to move. Avoid asteroids. Collect all 10 snippets.</div>
+          <div>
+            <button class="btn" id="mute">🔊</button>
+            <button class="btn" id="help">Help</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="right panel">
+        <div><strong>Story progress</strong></div>
+        <div class="small">Collected snippets will appear in their numbered slot below in the correct order, forming Mark Twain's short story.</div>
+        <div id="slots" style="margin-top:8px">
+          <!-- 10 slots -->
+        </div>
+        <hr />
+        <div id="fullStory" style="white-space:pre-wrap;margin-top:8px"></div>
+        <div id="message" class="center big" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// --- Story snippets (10) from Mark Twain's "The Celebrated Jumping Frog of Calaveras County" (public domain)
+const STORY = [
+  {i:1,text:`In the winter of '55 I took passage from New York, with a good intention of seeing the world. I was but a youngster; I had never been out of the State where I was born.`,collected:false},
+  {i:2,text:`A friend told me of a man named Simon Wheeler, who lived in a little mining town called Angels. He was a man of strong memories and gave himself to telling stories.`,collected:false},
+  {i:3,text:`I found Simon, and after being introduced I told him I had heard of such a thing as a jumping frog, and inquired whether he had ever heard of it.`,collected:false},
+  {i:4,text:`He said he had, and went on to describe the performance of a frog named Dan'l Webster, which could jump higher than any frog in the county.`,collected:false},
+  {i:5,text:`This frog was great for a stake; he was fed on quail shot and thrown into the air; he fetched down the house. People used to lay odds on him.`,collected:false},
+  {i:6,text:`One night some stranger came and the people of the place kicked him because he would not bet; so they cleaned him up and set him down at the table to watch the frog.`,collected:false},
+  {i:7,text:`The stranger put some substance into the frog that was not wholesome — in fact, he gambled with unfair methods; the frog became helpless, and the stranger took the money.`,collected:false},
+  {i:8,text:`Simon said that folks would come from miles to see Dan'l Webster jump; the frog had such a reputation that men came to raise their spirits by seeing him show.`,collected:false},
+  {i:9,text:`At last Dan'l Webster was lost, and the fame of his jumping grew like a story that did nothing but get told and grow. The whole thing was more than a bit ridiculous.`,collected:false},
+  {i:10,text:`When I left, I took with me the memory of the frog and the laughter that the story had brought. It seemed the proper end of a long, honest jest.`,collected:false}
+];
+
+// --- Game variables
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width; const H = canvas.height;
+let keys = {};
+let lives = 3;
+let timeLeft = 120; // seconds
+let collectedCount = 0;
+let gameOver = false;
+let mute = false;
+
+// player
+const player = {x:80,y:H/2,w:28,h:28,spd:220};
+
+// snippets (floating)
+const snippets = []; // will hold objects {x,y,dx,dy,w,h,index,collected}
+// obstacles
+const asteroids = [];
+
+// init slots UI
+const slotsEl = document.getElementById('slots');
+for(let i=1;i<=10;i++){ const d=document.createElement('div'); d.className='snippet-slot'; d.id='slot-'+i; d.innerHTML=`<strong>Snippet ${i}:</strong> <span style="opacity:0.9">(not collected)</span>`; slotsEl.appendChild(d);} 
+
+// utilities
+function rand(a,b){return a + Math.random()*(b-a);} 
+function playSound(type){ if(mute) return; try{ const s = new Audio(); if(type==='collect'){ s.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';} else if(type==='hit'){ s.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';} s.play().catch(()=>{});}catch(e){} }
+
+// create snippet objects positioned randomly with drift
+function spawnSnippets(){
+  snippets.length = 0;
+  for(let i=0;i<STORY.length;i++){
+    const w=180, h=60;
+    const x=rand(120,W-120); const y=rand(60,H-60);
+    snippets.push({x,y,dx:rand(-40,40),dy:rand(-30,30),w,h,index:STORY[i].i,collected:false});
+  }
+}
+
+function spawnAsteroids(n=6){ asteroids.length=0; for(let i=0;i<n;i++){ const r=rand(14,36); asteroids.push({x:rand(200,W-60),y:rand(30,H-30),dx:rand(-80,80),dy:rand(-80,80),r}); }}
+
+// input
+window.addEventListener('keydown',e=>{ keys[e.key.toLowerCase()] = true; if(e.key===' '){ e.preventDefault(); }});
+window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()] = false; });
+
+// collisions
+function rectsOverlap(a,b){ return !(a.x+a.w < b.x || a.x > b.x+b.w || a.y+a.h < b.y || a.y > b.y+b.h); }
+
+// update
+let last=performance.now();
+function update(now){ const dt=(now-last)/1000; last=now; if(gameOver) return; 
+  // timer
+  timeLeft -= dt; if(timeLeft<=0){ timeLeft=0; endGame(false,'Time is up!'); }
+  updateHUD();
+  // move player
+  let vx=0, vy=0; if(keys['arrowleft']||keys['a']) vx=-1; if(keys['arrowright']||keys['d']) vx=1; if(keys['arrowup']||keys['w']) vy=-1; if(keys['arrowdown']||keys['s']) vy=1;
+  const mag = Math.hypot(vx,vy) || 1; player.x += (vx/mag)*player.spd*dt; player.y += (vy/mag)*player.spd*dt;
+  player.x = Math.max(8, Math.min(W-player.w-8, player.x)); player.y = Math.max(8, Math.min(H-player.h-8, player.y));
+  // snippets drift
+  for(const s of snippets){ if(s.collected) continue; s.x += s.dx*dt; s.y += s.dy*dt; if(s.x < 10 || s.x + s.w > W-10) s.dx *= -1; if(s.y < 10 || s.y + s.h > H-10) s.dy *= -1; }
+  // asteroids move
+  for(const a of asteroids){ a.x += a.dx*dt; a.y += a.dy*dt; if(a.x < -50 || a.x > W+50) a.dx *= -1; if(a.y < -50 || a.y > H+50) a.dy *= -1; }
+  // check collections
+  for(const s of snippets){ if(s.collected) continue; if(rectsOverlap(player,{x:s.x,y:s.y,w:s.w,h:s.h})){ collectSnippet(s); } }
+  // check asteroid hits
+  for(const a of asteroids){ const ax=a.x, ay=a.y, r=a.r; const closestX = Math.max(player.x, Math.min(ax, player.x+player.w)); const closestY = Math.max(player.y, Math.min(ay, player.y+player.h)); const dist = Math.hypot(closestX-ax, closestY-ay); if(dist < r){ hitAsteroid(a); }}
+}
+
+function collectSnippet(s){ s.collected = true; const idx = s.index; STORY[idx-1].collected = true; collectedCount++; document.getElementById('collected').textContent = collectedCount; // reveal in slot
+  const slot = document.getElementById('slot-'+idx); slot.classList.add('collected'); slot.innerHTML = `<strong>Snippet ${idx}:</strong> ${STORY[idx-1].text}`;
+  playSound('collect'); if(collectedCount >= STORY.length){ endGame(true,'You collected the whole story!'); }
+}
+
+let lastHit = 0;
+function hitAsteroid(a){ const now=performance.now(); if(now-lastHit < 800) return; lastHit = now; lives--; document.getElementById('lives').textContent = lives; playSound('hit'); // knockback
+  player.x = 40; player.y = H/2; if(lives <= 0){ endGame(false,'You lost all lives.'); }}
+
+function endGame(win,msg){ gameOver = true; document.getElementById('message').textContent = msg; if(win){ // show full story
+    const full = STORY.map(s=>s.text).join('
+
+'); document.getElementById('fullStory').textContent = full; }
+}
+
+function updateHUD(){ const m = Math.floor(timeLeft/60).toString().padStart(2,'0'); const s = Math.floor(timeLeft%60).toString().padStart(2,'0'); document.getElementById('timer').textContent = `${m}:${s}`; }
+
+// draw
+function draw(){ ctx.clearRect(0,0,W,H);
+  // stars background
+  for(let i=0;i<120;i++){ const x=(i*53)%W; const y=(i*87)%H; ctx.fillStyle='rgba(255,255,255,0.03)'; ctx.fillRect(x,y,1,1); }
+  // draw snippets
+  for(const s of snippets){ if(s.collected) continue; // card
+    ctx.fillStyle='rgba(8,20,40,0.88)'; roundRect(ctx,s.x,s.y,s.w,s.h,8,true,false); ctx.fillStyle='rgba(122,211,255,0.95)'; ctx.font='12px Arial'; wrapText(ctx, STORY[s.index-1].text, s.x+8, s.y+16, s.w-12,14);
+  }
+  // draw asteroids
+  for(const a of asteroids){ ctx.beginPath(); ctx.fillStyle='rgba(120,120,120,0.95)'; ctx.arc(a.x,a.y,a.r,0,Math.PI*2); ctx.fill(); }
+  // draw player (simple ship)
+  ctx.save(); ctx.translate(player.x+player.w/2, player.y+player.h/2);
+  ctx.fillStyle='rgba(122,211,255,0.95)'; ctx.beginPath(); ctx.moveTo(0,-14); ctx.lineTo(10,10); ctx.lineTo(0,6); ctx.lineTo(-10,10); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function loop(now){ update(now); draw(); if(!gameOver) requestAnimationFrame(loop); }
+
+// helpers
+function roundRect(ctx,x,y,w,h,r,fill,stroke){ if(typeof r==='undefined') r=5; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); if(fill) ctx.fill(); if(stroke) ctx.stroke(); }
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){ const words = text.split(' '); let line=''; for(let n=0;n<words.length;n++){ const testLine = line + words[n] + ' '; const metrics = ctx.measureText(testLine); if(metrics.width > maxWidth && n>0){ ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight; } else line = testLine; } ctx.fillText(line, x, y); }
+
+// start game
+function start(){ spawnSnippets(); spawnAsteroids(6); collectedCount=0; lives=3; timeLeft=120; gameOver=false; last=performance.now(); updateHUD(); document.getElementById('lives').textContent = lives; document.getElementById('collected').textContent = collectedCount; document.getElementById('fullStory').textContent=''; document.getElementById('message').textContent=''; // reset slots
+  for(let i=1;i<=10;i++){ const slot=document.getElementById('slot-'+i); slot.classList.remove('collected'); slot.innerHTML=`<strong>Snippet ${i}:</strong> <span style="opacity:0.9">(not collected)</span>`; }
+  requestAnimationFrame(loop);
+}
+
+// restart button
+document.getElementById('restart').addEventListener('click',()=>{ start(); });
+// help
+document.getElementById('help').addEventListener('click',()=>{ alert('Collect all 10 snippets while avoiding asteroids. Controls: Arrow keys or WASD. You have 3 lives and 2 minutes. Snippets will be placed into their correct numbered slot as you collect them.'); });
+// mute
+document.getElementById('mute').addEventListener('click',()=>{ mute = !mute; document.getElementById('mute').textContent = mute ? '🔇' : '🔊'; });
+
+// initialize
+spawnSnippets(); spawnAsteroids(6); draw(); // focus canvas to capture keys
+canvas.addEventListener('click',()=>canvas.focus()); canvas.focus();
+
+</script>
+</body>
+</html>
